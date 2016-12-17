@@ -1,0 +1,28 @@
+{
+  "name": "mongoqueue",
+  "version": "0.1.0",
+  "description": "queuing framework with mongodb",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jscoder1009/mongoqueue.git"
+  },
+  "keywords": [
+    "mongodb",
+    "queue",
+    "npm"
+  ],
+  "author": "henry gengiti",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jscoder1009/mongoqueue/issues"
+  },
+  "homepage": "https://github.com/jscoder1009/mongoqueue#readme",
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "mocha": "^3.2.0"
+  }
+}
