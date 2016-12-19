@@ -1,6 +1,6 @@
 var mongoQueue = require('../index');
 
-var host = "",port="",database="",username="",password="", URL ="mongodb://matrimonynextdev:matrimonynextdev@ds025742.mlab.com:25742/matrimonynextdev";
+var host = "",port="",database="",username="",password="", URL ="mongodb://username:pwd@host:port/database";
 
 //username, password are optional parameters
 mongoQueue.setConnectionByURL(URL);
