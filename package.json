@@ -1,6 +1,6 @@
 {
   "name": "mongoqueue",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "queuing framework with mongodb",
   "main": "index.js",
   "scripts": {
