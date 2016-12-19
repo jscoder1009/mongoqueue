@@ -5,12 +5,14 @@ var host = "",port="",database="",username="",password="", URL ="mongodb://matri
 //username, password are optional parameters
 mongoQueue.setConnectionByURL(URL);
 
+// setup various workers with dequeuDelayInSec depending upon your scenario
 mongoQueue.setWorkers([{name: "Worker1", dequeDelayInSec: 5 },{name: "Worker2", dequeDelayInSec: 20 }],function(err, res){
     if(err) return console.log('setWorkers err', err);
 
     console.log(res);
 });
 
+//enqueue an item and associate to Worker2
 mongoQueue.enqueue({a:'one',b:'one'},{worker: 'Worker2'},function(err,res){
     if(err) return console.log('enqueue', err);
 
@@ -18,6 +20,7 @@ mongoQueue.enqueue({a:'one',b:'one'},{worker: 'Worker2'},function(err,res){
 
 });
 
+//enqueue an item and associate to Worker2
 mongoQueue.enqueue({a:'two',b:'two'},{worker: 'Worker2'},function(err,res){
     if(err) return console.log('enqueue', err);
 
@@ -25,6 +28,7 @@ mongoQueue.enqueue({a:'two',b:'two'},{worker: 'Worker2'},function(err,res){
 
 });
 
+//enqueue an item and associate to Worker1
 mongoQueue.enqueue({a:'three',b:'three'},{worker: 'Worker1'},function(err,res){
  if(err) return console.log('enqueue', err);
 
@@ -32,6 +36,7 @@ mongoQueue.enqueue({a:'three',b:'three'},{worker: 'Worker1'},function(err,res){
 
  });
 
+//enqueue an item and associate to Worker1
 mongoQueue.enqueue({a:'four',b:'four'},{worker: 'Worker1'},function(err,res){
  if(err) return console.log('enqueue', err);
 
@@ -39,6 +44,7 @@ mongoQueue.enqueue({a:'four',b:'four'},{worker: 'Worker1'},function(err,res){
 
  });
 
+//enqueue an item and associate to default worker
 mongoQueue.enqueue({a:'five',b:'five'},null,function(err,res){
  if(err) return console.log('enqueue', err);
 
@@ -46,6 +52,7 @@ mongoQueue.enqueue({a:'five',b:'five'},null,function(err,res){
 
  });
 
+//enqueue an item and associate to default worker
 mongoQueue.enqueue({a:'six',b:'six'},null,function(err,res){
  if(err) return console.log('enqueue', err);
 
@@ -53,6 +60,7 @@ mongoQueue.enqueue({a:'six',b:'six'},null,function(err,res){
 
  });
 
+//subscribe to worker events
 mongoQueue.subscription('Worker1',function(err,msg){
 
     mongoQueue.ackQueue('Worker1', function(err,res){
@@ -64,6 +72,7 @@ mongoQueue.subscription('Worker1',function(err,msg){
 
 });
 
+//subscribe to worker events
 mongoQueue.subscription('Worker2',function(err,msg){
 
     mongoQueue.ackQueue('Worker2', function(err,res){
@@ -75,6 +84,7 @@ mongoQueue.subscription('Worker2',function(err,msg){
 
 });
 
+//subscribe to worker events
 mongoQueue.subscription('default',function(err,msg){
 
     mongoQueue.ackQueue('default', function(err,res){

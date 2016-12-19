@@ -72,6 +72,9 @@ var dequeue = function (_this, worker, cb) {
                 _this.peek(worker, function (err, res) {
                     if (err) return cb(err);
 
+                    if(_this.debug)
+                        console.log('dequeing item ', res._id);
+
                     if (res != null) {
                         res.status = 'D';
                         res.dequeueStartTime = new Date();
@@ -413,7 +416,7 @@ mongoQueue.prototype.peek = function (worker, cb) {
 mongoQueue.prototype.ackQueue = function (worker, cb) {
     var _this = this;
     try {
-        this.inProgressQueue(worker, function (err, res) {
+        _this.inProgressQueue(worker, function (err, res) {
             if (err) return cb(err);
 
             if (res != null) {
@@ -438,20 +441,23 @@ mongoQueue.prototype.ackQueue = function (worker, cb) {
 }
 
 /** Mark the inProgress Item in Dequeue (D) to Fail (F) ***/
-mongoQueue.prototype.errQueue = function (worker, err, cb) {
+mongoQueue.prototype.errQueue = function (worker, errMsg, cb) {
 
+    var _this = this;
     try {
-        this.inProgressQueue(worker, function (err, res) {
+        _this.inProgressQueue(worker, function (err, res) {
             if (err) return cb(err);
 
             if (res != null) {
                 res.dequeueEndTime = new Date;
+                res.retry = res.retry + 1;
                 res.status = 'F';
-                res.errorMsg = err;
+                res.errorMsg = errMsg;
 
                 res.save(function (err) {
                     if (err) return cb(err);
 
+                    _this.stopWorker(worker);
                     return cb(null, res._id);
                 })
 
@@ -465,9 +471,9 @@ mongoQueue.prototype.errQueue = function (worker, err, cb) {
     }
 }
 
-/** Number of records which are yet to be processed ***/
+/** Number of records which are yet to be processed, including failed records with retry less than or equal to 2***/
 mongoQueue.prototype.pendingSize = function (worker, cb) {
-    this.mongooseQueueModel.count({status: {$in: ["F", "E"]}, worker: worker}, function (err, count) {
+    this.mongooseQueueModel.count({$or: [{status: "E"}, {status: "F", retry: {$lte: 2}}], worker: worker}, function (err, count) {
         if (err) return cb(err);
 
         return cb(null, count);
@@ -507,8 +513,8 @@ mongoQueue.prototype.inProgressQueue = function (worker, cb) {
     try {
         this.mongooseQueueModel
             .findOne({status: "D",worker: worker}
-                , {_id: 1},
-                function (err, res) {
+                //, {_id: 1},
+                ,function (err, res) {
                     if (err) cb(err);
 
                     if (res != null) {
