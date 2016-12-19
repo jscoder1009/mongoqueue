@@ -1,6 +1,6 @@
 # mongoqueue: Mongoose based light weight Queueing Engine on NPM
 
-This is a light weight queing engine which uses mongoose and cron libraries
+This is a light weight queuing engine. If you are already running "mongoose" and "cron" libraries in your application this is ideal for you.
 
 **Pre-Requisites**: Two NPM libraries are required for mongoqueue to work.
 
@@ -9,10 +9,13 @@ This is a light weight queing engine which uses mongoose and cron libraries
 `npm install mongoose -D`
 
 **Steps:**
-1. Set Connection
-2. Set Workers (Optional. If you do not set workers then default worker will be selected). **While setting the worker you need to specify the delay time in seconds (60 sec max for now)**
-3. enqueue your item. If you do not supply worker in the options params then default worker will be applied to the item. Also, you can optionally set priority and retry values. **default worker runs at a frequency of every 1 sec**. If you wish to run at your own interval create your own worker.
-4. subscribe to the worker. If you did not set any worker then it is required that you subscribe to the default worker. If you have set your own workers then make sure you subscribe to that worker to listen to the dequeue events.
+
+1. Set your Connection. Either by URL or Details
+2. Set Custom Workers [Optional]. If you do not set workers then default worker will be selected). **While setting the worker you need to specify the delay time in seconds (60 sec max for now)**
+3. Enqueue your item. If you do not supply worker in the options params then default worker will be applied to the item. Also, you can optionally set priority and retry values. If you wish to run at your own interval create your own custom worker.
+
+   Note: **default worker runs at a frequency of every 1 sec**.
+4. Subscribe to the default worker or your custom workers. **If you did not set any worker then it is required that you subscribe to the default worker.** If you have set your own workers then make sure you subscribe to that worker to listen to the dequeue events.
 
 **Simple Example**
 
@@ -66,15 +69,47 @@ var host = "",port="",database="",username="",password="",
 
 **API Available:**
 
- 1. setConnectionByURL(URL String)
+ 1. **setConnectionByURL**: If you already have a constructed URL.
 
- 2. setConnectionByDetails(host, port , database, username, password)
+    `setConnectionByURL("mongodb://username/password@host:port/database");`
 
+ 2. **setConnectionByDetails**: If you want to pass details and get connected
 
- 3. setWorkers([{name: "String", dequeDelayInSec: Number }
-              ,{name: "String", dequeDelayInSec: Number }]
-              ,callback)
+    `setConnectionByDetails(host, port , database, username, password)`
 
-    **Note: you this an optional step. If you do not set this then default worker be selected. Default worker runs every 1 second.**
+ 3. **setWorkers**: You can setup your custom workers with a dequeueDelayInSec
 
- 4. subscription ('worker name', callback(err, data))
+      ```
+      setWorkers([{name: "worker1", dequeDelayInSec: 1-60 sec }
+                  ,{name: "worker2", dequeDelayInSec: 1-60 sec }]
+                  ,function(err, data){
+
+                        //process your logic
+                   });
+      ```
+
+     **Note: If you did not set this API then default worker be selected. Default worker runs every 1 second.**
+
+ 4. **Subscription**: You will get your dequeued item events in this API.
+
+    `Subscription('worker1', function(err, data){
+        //process your application logic
+    });`
+
+ 5. **peek**:  get the next eligible item in the queue by worker
+
+ 6. **ackQueue**: To mark a dequeued item as Success by worker
+
+ 7. **errQueue**: To mark a dequeued item as Error by worker
+
+ 8. **inProgressQueue**: get the current Dequeued items ("D") by worker
+
+ 9. **Size**: Sometime you would want to know the size of the queue by worker (either default work or custom workers you have setup)
+
+    (a) **pendingSize**: get pending size of the queue by worker.
+
+    (b) **inProgressSize**: get in-progress size of the queue by worker.
+
+    (c) **failedSize**: get failed size of the queue by worker.
+
+    (d) **successSize**: get success size of the queue by worker.
