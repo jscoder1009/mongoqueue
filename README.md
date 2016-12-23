@@ -10,12 +10,18 @@ This is a light weight queuing engine. If you are already running "mongoose" and
 
 **Steps:**
 
-1. Set your Connection. Either by URL or Details
-2. Set Custom Workers [Optional]. If you do not set workers then default worker will be selected). **While setting the worker you need to specify the delay time in seconds (60 sec max for now)**
-3. Enqueue your item. If you do not supply worker in the options params then default worker will be applied to the item. Also, you can optionally set priority and retry values. If you wish to run at your own interval create your own custom worker.
+1. [**`Required`**] Set your Connection. Either by URL or Details
+2. [**`Optional`**] Set Custom Workers. If you do not set workers then default worker will be selected). **While setting the worker you need to specify the delay time in seconds (60 sec max for now)**
+3. [**`Required`**] Enqueue your item. If you do not supply worker in the options params then default worker will be applied to the item. Also, you can optionally set priority and retry values. If you wish to run at your own interval create your own custom worker.
 
    Note: **default worker runs at a frequency of every 1 sec**.
-4. Subscribe to the default worker or your custom workers. **If you did not set any worker then it is required that you subscribe to the default worker.** If you have set your own workers then make sure you subscribe to that worker to listen to the dequeue events.
+4. [**`Required`**] Subscribe to the default worker or your custom workers. **If you did not set any worker then it is required that you subscribe to the default worker.** If you have set your own workers then make sure you subscribe to that worker to listen to the dequeue events.
+
+    Inside the callback of the subscribe method: <br><br>
+         4.1. Mark as Success. Acknowledge the dequeued item <br>
+         4.2. Mark as Error.
+
+Please look at the API documentation below and example directory for further information
 
 **Simple Example**
 
@@ -71,11 +77,15 @@ var host = "",port="",database="",username="",password="",
 
  1. **setConnectionByURL**: If you already have a constructed URL.
 
-    `setConnectionByURL("mongodb://username/password@host:port/database");`
+    ```
+    setConnectionByURL("mongodb://username/password@host:port/database");
+    ```
 
  2. **setConnectionByDetails**: If you want to pass details and get connected
 
-    `setConnectionByDetails(host, port , database, username, password)`
+    ```
+    setConnectionByDetails(host, port , database, username, password)
+    ```
 
  3. **setWorkers**: You can setup your custom workers with a dequeueDelayInSec
 
@@ -92,24 +102,78 @@ var host = "",port="",database="",username="",password="",
 
  4. **Subscription**: You will get your dequeued item events in this API.
 
-    `Subscription('worker1', function(err, data){
+    ```
+    Subscription('worker1', function(err, data){
         //process your application logic
-    });`
+    });
+    ```
 
  5. **peek**:  get the next eligible item in the queue by worker
 
  6. **ackQueue**: To mark a dequeued item as Success by worker
 
+    ```
+    mongoQueue.ackQueue('worker name', function(err,res){
+            if(err) return console.log('ack failure ', err);
+
+            console.log('ack success', res);
+
+     });
+     ```
+
  7. **errQueue**: To mark a dequeued item as Error by worker
+
+    ```
+    mongoQueue.errQueue('worker name', "err msg - something wrong", function(err,res){
+            if(err) return console.log('ack failure ', err);
+
+            console.log('err success', res);
+
+     });
+     ```
 
  8. **inProgressQueue**: get the current Dequeued items ("D") by worker
 
- 9. **Size**: Sometime you would want to know the size of the queue by worker (either default work or custom workers you have setup)
+ 9. **reQueueAll**: Reset all the F records to Enqueue (E) status.
 
-    (a) **pendingSize**: get pending size of the queue by worker.
+    **Note:** Only those records for which attempts is equal to retry meaning they have already retried N times and the records are in the dead queue status.
 
-    (b) **inProgressSize**: get in-progress size of the queue by worker.
 
-    (c) **failedSize**: get failed size of the queue by worker.
+    ```
+    mongoQueue.reQueueAll('worker name',function(err,res){
+      if(err) return console.log('enqueue', err);
 
-    (d) **successSize**: get success size of the queue by worker.
+      console.log('requeue success', res);
+
+    });
+    ```
+
+ 10. **Size**: Sometime you would want to know the size of the queue by worker (either default work or custom workers you have setup)
+
+     (a) **pendingSize**: get pending size of the queue by worker.
+
+        ```
+        mongoQueue.pendingSize('worker name',function(err,res){
+        );
+        ```
+
+     (b) **inProgressSize**: get in-progress size of the queue by worker.
+
+        ```
+        mongoQueue.inProgressSize('worker name',function(err,res){
+        )
+        ```
+
+     (c) **failedSize**: get failed size of the queue by worker.
+
+        ```
+        mongoQueue.failedSize('worker name',function(err,res){
+            )
+        ```
+
+     (d) **successSize**: get success size of the queue by worker.
+
+        ```
+        mongoQueue.successSize('worker name',function(err,res){
+                )
+        ```
