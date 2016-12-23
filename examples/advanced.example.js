@@ -5,12 +5,13 @@ var host = "",port="",database="",username="",password="", URL ="mongodb://usern
 //username, password are optional parameters
 mongoQueue.setConnectionByURL(URL);
 
-// setup various workers with dequeuDelayInSec depending upon your scenario
 mongoQueue.setWorkers([{name: "Worker1", dequeDelayInSec: 5 },{name: "Worker2", dequeDelayInSec: 20 }],function(err, res){
     if(err) return console.log('setWorkers err', err);
 
     console.log(res);
 });
+
+// setup various workers with dequeuDelayInSec depending upon your scenario
 
 //enqueue an item and associate to Worker2
 mongoQueue.enqueue({a:'one',b:'one'},{worker: 'Worker2'},function(err,res){
@@ -45,7 +46,7 @@ mongoQueue.enqueue({a:'four',b:'four'},{worker: 'Worker1'},function(err,res){
  });
 
 //enqueue an item and associate to default worker
-mongoQueue.enqueue({a:'five',b:'five'},null,function(err,res){
+mongoQueue.enqueue({a:'five',b:'five'},{retry:5},function(err,res){
  if(err) return console.log('enqueue', err);
 
  console.log(res);
@@ -87,10 +88,10 @@ mongoQueue.subscription('Worker2',function(err,msg){
 //subscribe to worker events
 mongoQueue.subscription('default',function(err,msg){
 
-    mongoQueue.ackQueue('default', function(err,res){
+    mongoQueue.errQueue('default', "something wrong", function(err,res){
         if(err) return console.log('ack failure ', err);
 
-        console.log('ack success', res);
+        console.log('err success', res);
 
     });
 

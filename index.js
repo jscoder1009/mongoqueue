@@ -17,6 +17,7 @@ var initializeModel = function (queueConn) {
             dequeueEndTime: {type: Date, default: null},
             errorMsg: {type: String},
             retry: {type: Number, required: true, default: 2},
+            attempts: {type: Number, required: true, default: 0},
             priority: {type: Number, default: 1, enum: [1, 2, 3, 4, 5]}
         });
 
@@ -72,12 +73,14 @@ var dequeue = function (_this, worker, cb) {
                 _this.peek(worker, function (err, res) {
                     if (err) return cb(err);
 
-                    if(_this.debug)
-                        console.log('dequeing item ', res._id);
-
                     if (res != null) {
+
+                        if (_this.debug)
+                            console.log('dequeing item ', res._id);
+
                         res.status = 'D';
                         res.dequeueStartTime = new Date();
+                        res.attempts = res.attempts + 1;
 
                         res.save(function (err) {
                             if (err) cb(err)
@@ -105,16 +108,21 @@ var mongoQueue = function () {
     this.mongoQueueConn = require('mongoose');
     this.mongooseQueueModel = null;
     this.mongoQueueConn.Promise = global.Promise;
-    this.debug=true;
-
+    this.debug = false;
     this.workers = [];
-    this.setWorkers([{name: 'default', dequeDelayInSec: 1}],function(err,res){
-        if(err){ return console.log('set default worker failed - ', err);}
+    this.setWorkers([{name: 'default', dequeDelayInSec: 1}], function (err, res) {
+        if (err) {
+            return console.log('set default worker failed - ', err);
+        }
 
-        if(this.debug)
-               console.log('success in setting worker default');
+        if (this.debug)
+            console.log('success in setting worker default');
     });
     //this.startWorkers(this.workers[0]);
+}
+
+mongoQueue.prototype.setDebug=function(debug){
+    this.debug=debug;
 }
 
 /** set connection by detals **/
@@ -135,7 +143,9 @@ mongoQueue.prototype.setConnectionByDetails = function (host, port, database, us
             //password is not passed too. connect with simple connection
 
             try {
-                this.mongoQueueConn.connect('mongodb://' + host + '/' + database);
+
+                if (!this.mongoQueueConn.connection.readyState)
+                    this.mongoQueueConn.connect('mongodb://' + host + '/' + database);
             } catch (e) {
                 throw e;
             }
@@ -158,7 +168,7 @@ mongoQueue.prototype.setConnectionByDetails = function (host, port, database, us
 
         }
     }
-    if(this.debug) console.log('mongoqueue connection success');
+    if (this.debug) console.log('mongoqueue connection success');
 
     this.mongooseQueueModel = initializeModel(this.mongoQueueConn);
 
@@ -171,7 +181,8 @@ mongoQueue.prototype.setConnectionByURL = function (URL) {
         throw 'URL is required input argument.';
 
     try {
-        this.mongoQueueConn.connect('mongodb://' + URL);
+        if (!this.mongoQueueConn.connection.readyState)
+            this.mongoQueueConn.connect('mongodb://' + URL);
 
         this.mongooseQueueModel = initializeModel(this.mongoQueueConn);
 
@@ -193,7 +204,9 @@ mongoQueue.prototype.setWorkers = function (workers, cb) {
                     onTick: function () {
 
                         dequeue(_this, a.name, function (err, data) {
-                            if (err){ return cb(err); }
+                            if (err) {
+                                return cb(err);
+                            }
 
                             if (data != undefined) {
                                 events.publish(a.name, {
@@ -216,56 +229,21 @@ mongoQueue.prototype.setWorkers = function (workers, cb) {
 
 mongoQueue.prototype.startWorker = function (worker, cb) {
 
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
     var _this = this;
     try {
-        /*var _this = this;
-         var workerStr = '*!/'+worker.dequeDelayInSec + ' * * * * *';
 
-         var job = new CronJob(
-         {
-         cronTime : workerStr,
-         onTick: function() {
-         console.log('worker running at ', new Date(), ' name ',worker.name);
-
-         dequeue(_this,worker.name,function(err,data){
-         if(err) return console.log('dequeue err ',err);
-
-         if(data != undefined){
-         events.publish(worker.name, {
-         data: data
-         });
-         }
-         })
-
-         },
-         start: false,
-         timeZone: 'GMT'
-         });
-
-
-         /!*workerStr, function() {
-         console.log('worker running at ', new Date(), ' name ',worker.name);
-
-         dequeue(_this,worker.name,function(err,data){
-         if(err) return console.log('dequeue err ',err);
-
-         if(data != undefined){
-         events.publish(worker.name, {
-         data: data
-         });
-         }
-         })
-
-         }, null, true, 'GMT');*!/
-         */
-        if(_this.debug)
+        if (_this.debug)
             console.log('starting job worker', worker);
 
         var index = _this.workers.map(function (x) {
             return x.name;
         }).indexOf(worker);
 
-        if(!_this.workers[index].job.running)
+        if (!_this.workers[index].job.running)
             _this.workers[index].job.start();
 
     } catch (e) {
@@ -276,61 +254,26 @@ mongoQueue.prototype.startWorker = function (worker, cb) {
 
 mongoQueue.prototype.stopWorker = function (worker, cb) {
 
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
     var _this = this;
     try {
-        /*var _this = this;
-         var workerStr = '*!/'+worker.dequeDelayInSec + ' * * * * *';
 
-         var job = new CronJob(
-         {
-         cronTime : workerStr,
-         onTick: function() {
-         console.log('worker running at ', new Date(), ' name ',worker.name);
+        _this.pendingSize(worker, function (err, size) {
+            if (size == 0) {
+                if (_this.debug)
+                    console.log('Stopping job worker', worker);
 
-         dequeue(_this,worker.name,function(err,data){
-         if(err) return console.log('dequeue err ',err);
+                var index = _this.workers.map(function (x) {
+                    return x.name;
+                }).indexOf(worker);
 
-         if(data != undefined){
-         events.publish(worker.name, {
-         data: data
-         });
-         }
-         })
-
-         },
-         start: false,
-         timeZone: 'GMT'
-         });
-
-
-         /!*workerStr, function() {
-         console.log('worker running at ', new Date(), ' name ',worker.name);
-
-         dequeue(_this,worker.name,function(err,data){
-         if(err) return console.log('dequeue err ',err);
-
-         if(data != undefined){
-         events.publish(worker.name, {
-         data: data
-         });
-         }
-         })
-
-         }, null, true, 'GMT');*!/
-         */
-       _this.pendingSize(worker, function (err, size) {
-                if (size == 0) {
-                    if(_this.debug)
-                        console.log('Stopping job worker', worker);
-
-                    var index = _this.workers.map(function (x) {
-                        return x.name;
-                    }).indexOf(worker);
-
-                    if(_this.workers[index].job.running)
-                        _this.workers[index].job.stop();
-                }
-            });
+                if (_this.workers[index].job.running)
+                    _this.workers[index].job.stop();
+            }
+        });
     } catch (e) {
         return e;
     }
@@ -338,6 +281,7 @@ mongoQueue.prototype.stopWorker = function (worker, cb) {
 
 /** enqueue method **/
 mongoQueue.prototype.enqueue = function (obj, options, cb) {
+
     if (obj == null)
         return cb('No Input Passed');
 
@@ -357,17 +301,13 @@ mongoQueue.prototype.enqueue = function (obj, options, cb) {
             //if worker is passed then overriding with passed worker
             if (options.worker) {
 
-                //check if the worker is initialized
-                if (this.workers.map(function (x) {
-                        return x.name;
-                    }).indexOf(options.worker) >= 0) {
-                    query.worker = options.worker;
+                if (!this.isValidWorker(options.worker)) {
+                    return cb("Invalid Worker Provided " + worker);
                 } else {
-                    return cb('worker ' + options.worker + ' not initialized');
+                    query.worker = options.worker;
                 }
 
             }
-
 
         } catch (e) {
 
@@ -391,9 +331,16 @@ mongoQueue.prototype.enqueue = function (obj, options, cb) {
 /** get the next eligible item in the queue**/
 mongoQueue.prototype.peek = function (worker, cb) {
 
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
     try {
         this.mongooseQueueModel
-            .findOne({$or: [{status: "E"}, {status: "F", retry: {$lte: 2}}], worker: worker})
+            //.findOne({$or: [{status: "E"}, {status: "F", attempts: {$lte: 1}}], worker: worker})
+            .findOne({worker: worker})
+            .$where('(this.status == "E") || (this.status == "F" && this.attempts < this.retry)')
+            //.$where('this.status == "F" && this.attempts <= this.retry')
             .sort({priority: -1, enqueueTime: 1})
             .limit(1)
             .exec(function (err, res) {
@@ -414,6 +361,11 @@ mongoQueue.prototype.peek = function (worker, cb) {
 
 /** Mark the inProgress Item in Dequeue (D) to Success (S) ***/
 mongoQueue.prototype.ackQueue = function (worker, cb) {
+
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
     var _this = this;
     try {
         _this.inProgressQueue(worker, function (err, res) {
@@ -443,6 +395,10 @@ mongoQueue.prototype.ackQueue = function (worker, cb) {
 /** Mark the inProgress Item in Dequeue (D) to Fail (F) ***/
 mongoQueue.prototype.errQueue = function (worker, errMsg, cb) {
 
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
     var _this = this;
     try {
         _this.inProgressQueue(worker, function (err, res) {
@@ -450,7 +406,6 @@ mongoQueue.prototype.errQueue = function (worker, errMsg, cb) {
 
             if (res != null) {
                 res.dequeueEndTime = new Date;
-                res.retry = res.retry + 1;
                 res.status = 'F';
                 res.errorMsg = errMsg;
 
@@ -471,9 +426,66 @@ mongoQueue.prototype.errQueue = function (worker, errMsg, cb) {
     }
 }
 
+/** Mark the inProgress Item in Dequeue (D) to Fail (F) ***/
+mongoQueue.prototype.reQueueAll = function (worker, cb) {
+
+    var _this = this;
+    try {
+
+        if (!this.isValidWorker(worker)) {
+            return cb("Invalid Worker Provided " + worker);
+        }
+
+        // all the records which are retried more than twice are in dead queue status. Marking all as E again to be picked up.
+        _this.mongooseQueueModel
+            .where("this.status == 'F' && this.attempts == this.retry")
+            .update({"worker":worker},{$set: {status: 'E', retry: 2, attempts: 0}},{multi: true}, function (err, res) {
+                if (err) return cb(err);
+
+                _this.startWorker(worker);
+                return cb(null, "queued all Failed back to Success");
+            });
+
+    } catch (e) {
+        return cb(e);
+    }
+}
+
+/** Mark the inProgress Item in Dequeue (D) to Fail (F) ***/
+mongoQueue.prototype.reQueueItem = function (worker,Id, cb) {
+
+    var _this = this;
+    try {
+
+        if (!this.isValidWorker(worker)) {
+            return cb("Invalid Worker Provided " + worker);
+        }
+
+        // all the records which are retried more than twice are in dead queue status. Marking all as E again to be picked up.
+        _this.mongooseQueueModel
+            .where("this.status == 'F' && this.attempts == this.retry")
+            .update({"worker":worker, _id: Id},{$set: {status: 'E', retry: 2, attempts: 0}},{multi: true}, function (err, res) {
+                if (err) return cb(err);
+
+                _this.startWorker(worker);
+                return cb(null, "queued all Failed back to Success");
+            });
+
+    } catch (e) {
+        return cb(e);
+    }
+}
+
 /** Number of records which are yet to be processed, including failed records with retry less than or equal to 2***/
 mongoQueue.prototype.pendingSize = function (worker, cb) {
-    this.mongooseQueueModel.count({$or: [{status: "E"}, {status: "F", retry: {$lte: 2}}], worker: worker}, function (err, count) {
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+    this.mongooseQueueModel.count({
+        $or: [{status: "E"}, {status: "F", retry: {$lte: 2}}],
+        worker: worker
+    }, function (err, count) {
         if (err) return cb(err);
 
         return cb(null, count);
@@ -482,6 +494,11 @@ mongoQueue.prototype.pendingSize = function (worker, cb) {
 
 /** Number of records which are being processing ***/
 mongoQueue.prototype.inProgressSize = function (worker, cb) {
+
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
     this.mongooseQueueModel.count({status: "D", worker: worker}, function (err, count) {
         if (err) return cb(err);
 
@@ -491,7 +508,11 @@ mongoQueue.prototype.inProgressSize = function (worker, cb) {
 
 /** Number of records which are in Failed status ***/
 mongoQueue.prototype.failedSize = function (worker, cb) {
-    this.mongooseQueueModel.count({status: "F",worker:worker}, function (err, count) {
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+    this.mongooseQueueModel.count({status: "F", worker: worker}, function (err, count) {
         if (err) return cb(err);
 
         return cb(null, count);
@@ -500,7 +521,12 @@ mongoQueue.prototype.failedSize = function (worker, cb) {
 
 /** Number of records which are in Success status ***/
 mongoQueue.prototype.successSize = function (worker, cb) {
-    this.mongooseQueueModel.count({status: "S", worker:worker}, function (err, count) {
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+
+    this.mongooseQueueModel.count({status: "S", worker: worker}, function (err, count) {
         if (err) return cb(err);
 
         return cb(null, count);
@@ -512,9 +538,9 @@ mongoQueue.prototype.inProgressQueue = function (worker, cb) {
 
     try {
         this.mongooseQueueModel
-            .findOne({status: "D",worker: worker}
+            .findOne({status: "D", worker: worker}
                 //, {_id: 1},
-                ,function (err, res) {
+                , function (err, res) {
                     if (err) cb(err);
 
                     if (res != null) {
@@ -533,6 +559,12 @@ mongoQueue.prototype.inProgressQueue = function (worker, cb) {
 
 mongoQueue.prototype.subscription = function (worker, cb) {
 
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+    this.startWorker(worker);
+
     events.subscribe(worker, function (obj) {
         // Do something now that the event has occurred
 
@@ -540,4 +572,15 @@ mongoQueue.prototype.subscription = function (worker, cb) {
     });
 };
 
+mongoQueue.prototype.isValidWorker = function (worker) {
+
+    //check if the worker is initialized
+    if (this.workers.map(function (x) {
+            return x.name;
+        }).indexOf(worker) < 0) {
+        return false;
+    } else
+        return true;
+
+}
 module.exports = new mongoQueue();
