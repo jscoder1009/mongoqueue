@@ -11,7 +11,7 @@ This is a light weight queuing engine. If you are already running "mongoose" and
 **Steps:**
 
 1. [**`Required`**] Set your Connection. Either by URL or Details
-2. [**`Optional`**] Set Custom Workers. If you do not set workers then default worker will be selected). **While setting the worker you need to specify the dequeDelayCron in cron pattern**
+2. [**`Optional`**] Set your Custom Workers with your desired schedule. If you did not set your customer workers then a default worker will be selected). **While setting the worker you need to specify the dequeDelayCron in cron pattern**. You can optionally setup cleanup worker schedule to clear out the Successfully processed queue items as per your desired cron pattern. Look at the advanced example for more information.
 3. [**`Required`**] Enqueue your item. If you do not supply worker in the options params then default worker will be applied to the item. Also, you can optionally set priority and retry values. If you wish to run at your own interval create your own custom worker.
 
    Note: **default worker runs at a frequency of every 1 sec**.
