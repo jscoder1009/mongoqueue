@@ -6,8 +6,8 @@ var host = "",port="",database="",username="",password="", URL ="mongodb://usern
 mongoQueue.setConnectionByURL(URL);
 
 // enqueue(input object, options, callback function)
-mongoQueue.enqueue({a:'one',b:'one'},{retry:1},function(err,res){
-    if(err) return console.log('enqueue', err);
+mongoQueue.enqueue({data: {a: 'input1', b: 'input2'}}, function (err, res) {
+    if (err) return console.log('enqueue', err);
 
     console.log(res);
 
@@ -20,12 +20,17 @@ mongoQueue.subscription('default',function(err,msg){
     // the below steps
 
     // mark as success
-    /*mongoQueue.ackQueue('default', function(err,res){
+    /*
+    mongoQueue.ackQueue('default', function(err,res){
         if(err) return console.log('ack failure ', err);
 
         console.log('ack success', res);
 
-    });*/
+    });
+
+    or
+
+    */
 
     //mark as failure
     mongoQueue.errQueue('default',"something went wrong",function(err,res){

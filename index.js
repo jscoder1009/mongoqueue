@@ -75,15 +75,16 @@ var dequeue = function (_this, worker, cb) {
 
                     if (res != null) {
 
-                        if (_this.debug)
-                            console.log('dequeing item ', res._id);
-
                         res.status = 'D';
                         res.dequeueStartTime = new Date();
                         res.attempts = res.attempts + 1;
 
                         res.save(function (err) {
                             if (err) cb(err)
+
+                            if (_this.debug)
+                                console.log('dequeing item Saved ', res._id, ' for worker ', ' attempts ', res.attempts);
+
 
                             return cb(null, res);
 
@@ -110,9 +111,11 @@ var mongoQueue = function () {
     this.mongoQueueConn.Promise = global.Promise;
     this.debug = false;
     this.workers = [];
-    this.setWorkers([{name: 'default', dequeDelayInSec: 1}], function (err, res) {
+
+    this.setWorkers([{name: "default", options: {dequeDelayCron: '* * * * * *'}}], function (err, res) {
         if (err) {
-            return console.log('set default worker failed - ', err);
+            console.log('set default worker failed - ', err);
+            throw err;
         }
 
         if (this.debug)
@@ -121,8 +124,8 @@ var mongoQueue = function () {
     //this.startWorkers(this.workers[0]);
 }
 
-mongoQueue.prototype.setDebug=function(debug){
-    this.debug=debug;
+mongoQueue.prototype.setDebug = function (debug) {
+    this.debug = debug;
 }
 
 /** set connection by detals **/
@@ -195,45 +198,139 @@ mongoQueue.prototype.setWorkers = function (workers, cb) {
     var _workers = this.workers;
     var _this = this;
 
-    if (Array.isArray(workers)) {
-        workers.forEach(function (a) {
-            var workerStr = '*/' + a.dequeDelayInSec + ' * * * * *';
-            var job = new CronJob(
-                {
-                    cronTime: workerStr,
-                    onTick: function () {
+    if (_this.debug)
+        console.log('set worker invoked  ', workers, ' at ', new Date());
 
-                        dequeue(_this, a.name, function (err, data) {
-                            if (err) {
-                                return cb(err);
-                            }
+    try {
 
-                            if (data != undefined) {
-                                events.publish(a.name, {
-                                    data: data
-                                });
-                            }
-                        })
+        if (Array.isArray(workers)) {
+            workers.forEach(function (a) {
 
-                    },
-                    start: false,
-                    timeZone: 'GMT'
-                });
+                if (_this.debug)
+                console.log('setting worker  ', a.name, ' at ', new Date());
 
-            a.job = job;
+                var workerStr;
 
-            _workers.push(a);
-        });
+                try {
+                    workerStr = a.options.dequeueDelayCron.toString();
+
+                } catch (e) {
+                    workerStr = '* * * * * *';
+                }
+
+
+                var job = new CronJob(
+                    {
+                        cronTime: workerStr,
+                        onTick: function () {
+                            if (_this.debug)
+                                console.log('worker running now ', a.name, ' at ', new Date());
+
+                            _this.pendingSize(a.name, function (err, size) {
+                                if (size == 0) {
+                                    _this.stopWorker(a.name, function (err, res) {
+                                        if (err) return cb(err);
+
+                                        if (_this.debug)
+                                            console.log('worker stopped now ', a.name);
+                                    });
+                                } else {
+                                    dequeue(_this, a.name, function (err, data) {
+                                        if (err) {
+                                            return cb(err);
+                                        }
+
+                                        if (data != undefined) {
+                                            events.publish(a.name, {
+                                                data: data
+                                            });
+                                        }
+                                    });
+                                }
+
+                            });
+                        },
+                        start: false,
+                        timeZone: 'GMT'
+                    });
+
+                a.job = job;
+
+                try {
+
+                    a.jobClearSuccess = new CronJob({
+                        cronTime: a.options.deleteSuccessCron.toString(),
+                        onTick: function () {
+                            if (_this.debug)
+                                console.log('clean job worker running now ', a.name, ' at ', new Date());
+
+                            _this.successSize(a.name, function (err, count) {
+                                if (err)  return cb(err);
+
+                                if (count == 0) {
+                                    if (_this.debug)
+                                        console.log('going to stop clean worker running now ', a.name, ' at ', new Date());
+
+                                    _this.stopCleanWorker(a.name, function (err, res) {
+                                        if (err) return cb(err);
+
+                                        if (_this.debug)
+                                            console.log('stopped clean worker ', a.name, ' at ', new Date());
+
+
+                                    });
+
+
+                                } else {
+                                    if (_this.debug)
+                                        console.log('Going to Delete Success[S] by clean worker ', a.name, ' at ', new Date());
+
+                                    _this.clearSuccessQueueItems(a.name, function (err, res) {
+                                        if (err) return cb(err);
+
+                                        if (_this.debug)
+                                            console.log('Successfully to Deleted Success[S] by clean worker ', a.name, ' at ', new Date());
+
+                                    })
+
+                                }
+
+                            });
+                        },
+                        start: false,
+                        timeZone: 'GMT'
+                    });
+
+                } catch (e) {
+                    if (_this.debug) {
+                        console.log('Cleanup Worker Not setup for ', a.name, ' at ', new Date());
+                    }
+
+
+                }
+
+                _workers.push(a);
+            });
+        }
+
+    } catch (e) {
+        console.log(e);
+        throw e;
     }
+
 }
 
 mongoQueue.prototype.startWorker = function (worker, cb) {
+
+    var _this = this;
+
+    if (_this.debug)
+        console.log('start worker job invoked ', worker);
 
     if (!this.isValidWorker(worker)) {
         return cb("Invalid Worker Provided " + worker);
     }
 
-    var _this = this;
     try {
 
         if (_this.debug)
@@ -252,6 +349,31 @@ mongoQueue.prototype.startWorker = function (worker, cb) {
 
 }
 
+mongoQueue.prototype.startCleanWorker = function (worker, cb) {
+
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+    var _this = this;
+    try {
+
+        if (_this.debug)
+            console.log('starting job Clean worker', worker);
+
+        var index = _this.workers.map(function (x) {
+            return x.name;
+        }).indexOf(worker);
+
+        if (!_this.workers[index].jobClearSuccess.running)
+            _this.workers[index].jobClearSuccess.start();
+
+    } catch (e) {
+        return e;
+    }
+
+}
+
 mongoQueue.prototype.stopWorker = function (worker, cb) {
 
     if (!this.isValidWorker(worker)) {
@@ -261,62 +383,100 @@ mongoQueue.prototype.stopWorker = function (worker, cb) {
     var _this = this;
     try {
 
-        _this.pendingSize(worker, function (err, size) {
-            if (size == 0) {
-                if (_this.debug)
-                    console.log('Stopping job worker', worker);
+        var index = _this.workers.map(function (x) {
+            return x.name;
+        }).indexOf(worker);
 
-                var index = _this.workers.map(function (x) {
-                    return x.name;
-                }).indexOf(worker);
+        if (_this.workers[index].job.running)
+            _this.workers[index].job.stop();
 
-                if (_this.workers[index].job.running)
-                    _this.workers[index].job.stop();
-            }
-        });
+        if (_this.debug)
+            console.log('stopped worker  ', worker);
+
+    } catch (e) {
+        return e;
+    }
+}
+
+mongoQueue.prototype.stopCleanWorker = function (worker, cb) {
+
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+    var _this = this;
+    try {
+
+        var index = _this.workers.map(function (x) {
+            return x.name;
+        }).indexOf(worker);
+
+        if (_this.workers[index].jobClearSuccess.running)
+            _this.workers[index].jobClearSuccess.stop();
+
     } catch (e) {
         return e;
     }
 }
 
 /** enqueue method **/
-mongoQueue.prototype.enqueue = function (obj, options, cb) {
-
-    if (obj == null)
-        return cb('No Input Passed');
+mongoQueue.prototype.enqueue = function (obj, cb) {
 
     var _this = this;
+
+    if (_this.debug)
+        console.log('Enqueue details ', obj);
+
+    if (_this.debug)
+        console.log('worker details ', this.workers[0].name);
+
+    if (obj.data == null)
+        return cb('No Input Passed');
+
     try {
 
-        var query = {params: obj};
+        var query = {params: obj.data};
 
         //setting default worker
         query.worker = this.workers[0].name;
 
         try {
-            if (options.priority) query.priority = options.priority;
 
-            if (options.retry) query.retry = options.retry;
-
-            //if worker is passed then overriding with passed worker
-            if (options.worker) {
-
-                if (!this.isValidWorker(options.worker)) {
-                    return cb("Invalid Worker Provided " + worker);
-                } else {
-                    query.worker = options.worker;
+            if(obj.worker){
+                //if worker is passed then overriding with passed worker
+                if (!this.isValidWorker(obj.worker)) {
+                    return cb("Invalid Worker Provided " + obj.worker);
                 }
-
             }
+
+            query.worker = obj.worker;
 
         } catch (e) {
 
         }
 
+        try {
+            if (obj.options.priority) query.priority = obj.options.priority;
+
+        } catch (e) {
+
+        }
+
+        try {
+
+            if (obj.options.retry) query.retry = obj.options.retry;
+
+        } catch (e) {
+
+        }
+
+        if (_this.debug)
+            console.log('Enqueue details validated ', query);
+
         this.mongooseQueueModel.create(query, function (err, res) {
             if (err) return cb(err);
 
-            _this.startWorker(query.worker);
+            _this.startWorker(res.worker);
             return cb(null, {enqueueId: res._id});
 
         });
@@ -337,7 +497,7 @@ mongoQueue.prototype.peek = function (worker, cb) {
 
     try {
         this.mongooseQueueModel
-            //.findOne({$or: [{status: "E"}, {status: "F", attempts: {$lte: 1}}], worker: worker})
+        //.findOne({$or: [{status: "E"}, {status: "F", attempts: {$lte: 1}}], worker: worker})
             .findOne({worker: worker})
             .$where('(this.status == "E") || (this.status == "F" && this.attempts < this.retry)')
             //.$where('this.status == "F" && this.attempts <= this.retry')
@@ -378,7 +538,7 @@ mongoQueue.prototype.ackQueue = function (worker, cb) {
                 res.save(function (err) {
                     if (err) return cb(err);
 
-                    _this.stopWorker(worker);
+                    _this.startCleanWorker(worker);
                     return cb(null, res._id);
                 })
 
@@ -412,7 +572,6 @@ mongoQueue.prototype.errQueue = function (worker, errMsg, cb) {
                 res.save(function (err) {
                     if (err) return cb(err);
 
-                    _this.stopWorker(worker);
                     return cb(null, res._id);
                 })
 
@@ -439,7 +598,13 @@ mongoQueue.prototype.reQueueAll = function (worker, cb) {
         // all the records which are retried more than twice are in dead queue status. Marking all as E again to be picked up.
         _this.mongooseQueueModel
             .where("this.status == 'F' && this.attempts == this.retry")
-            .update({"worker":worker},{$set: {status: 'E', retry: 2, attempts: 0}},{multi: true}, function (err, res) {
+            .update({"worker": worker}, {
+                $set: {
+                    status: 'E',
+                    retry: 2,
+                    attempts: 0
+                }
+            }, {multi: true}, function (err, res) {
                 if (err) return cb(err);
 
                 _this.startWorker(worker);
@@ -452,7 +617,7 @@ mongoQueue.prototype.reQueueAll = function (worker, cb) {
 }
 
 /** Mark the inProgress Item in Dequeue (D) to Fail (F) ***/
-mongoQueue.prototype.reQueueItem = function (worker,Id, cb) {
+mongoQueue.prototype.reQueueItem = function (worker, Id, cb) {
 
     var _this = this;
     try {
@@ -464,7 +629,13 @@ mongoQueue.prototype.reQueueItem = function (worker,Id, cb) {
         // all the records which are retried more than twice are in dead queue status. Marking all as E again to be picked up.
         _this.mongooseQueueModel
             .where("this.status == 'F' && this.attempts == this.retry")
-            .update({"worker":worker, _id: Id},{$set: {status: 'E', retry: 2, attempts: 0}},{multi: true}, function (err, res) {
+            .update({"worker": worker, _id: Id}, {
+                $set: {
+                    status: 'E',
+                    retry: 2,
+                    attempts: 0
+                }
+            }, {multi: true}, function (err, res) {
                 if (err) return cb(err);
 
                 _this.startWorker(worker);
@@ -482,14 +653,13 @@ mongoQueue.prototype.pendingSize = function (worker, cb) {
         return cb("Invalid Worker Provided " + worker);
     }
 
-    this.mongooseQueueModel.count({
-        $or: [{status: "E"}, {status: "F", retry: {$lte: 2}}],
-        worker: worker
-    }, function (err, count) {
-        if (err) return cb(err);
+    this.mongooseQueueModel.count({worker: worker})
+        .$where('(this.status == "E") || (this.status == "F" && this.attempts < this.retry) ')
+        .exec(function (err, count) {
+            if (err) return cb(err);
 
-        return cb(null, count);
-    });
+            return cb(null, count);
+        });
 }
 
 /** Number of records which are being processing ***/
@@ -563,8 +733,6 @@ mongoQueue.prototype.subscription = function (worker, cb) {
         return cb("Invalid Worker Provided " + worker);
     }
 
-    this.startWorker(worker);
-
     events.subscribe(worker, function (obj) {
         // Do something now that the event has occurred
 
@@ -583,4 +751,19 @@ mongoQueue.prototype.isValidWorker = function (worker) {
         return true;
 
 }
+
+mongoQueue.prototype.clearSuccessQueueItems = function (worker, cb) {
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+    this.mongooseQueueModel.remove({status: "S", worker: worker}, function (err, res) {
+        if (err) return cb(err);
+
+        return cb(null, res);
+
+    })
+
+}
+
 module.exports = new mongoQueue();

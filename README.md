@@ -11,11 +11,11 @@ This is a light weight queuing engine. If you are already running "mongoose" and
 **Steps:**
 
 1. [**`Required`**] Set your Connection. Either by URL or Details
-2. [**`Optional`**] Set Custom Workers. If you do not set workers then default worker will be selected). **While setting the worker you need to specify the delay time in seconds (60 sec max for now)**
+2. [**`Optional`**] Set Custom Workers. If you do not set workers then default worker will be selected). **While setting the worker you need to specify the dequeDelayCron in cron pattern**
 3. [**`Required`**] Enqueue your item. If you do not supply worker in the options params then default worker will be applied to the item. Also, you can optionally set priority and retry values. If you wish to run at your own interval create your own custom worker.
 
    Note: **default worker runs at a frequency of every 1 sec**.
-4. [**`Required`**] Subscribe to the default worker or your custom workers. **If you did not set any worker then it is required that you subscribe to the default worker.** If you have set your own workers then make sure you subscribe to that worker to listen to the dequeue events.
+4. [**`Required`**] Subscribe to the default worker or your custom workers. **If you did not set any custom workers then it is required that you subscribe to the default worker.** If you have set your own workers then make sure you subscribe to that worker to listen to the dequeue events.
 
     Inside the callback of the subscribe method: <br><br>
          4.1. Mark as Success. Acknowledge the dequeued item <br>
@@ -28,52 +28,54 @@ Please look at the API documentation below and example directory for further inf
 
 ```
 var mongoQueue = require('mongoqueue');
-var host = "",port="",database="",username="",password="",
-    URL ="mongodb://username:pwd@host:port/database";
+var host = "",port="",database="",username="",password="", URL ="mongodb://username:pwd@host:port/database";
 
-    //set the connection by URL or Details
-    mongoQueue.setConnectionByURL(URL);
-    Or
-    mongoQueue.setConnectionByDetails(host, port, database, username, password);
+//username, password are optional parameters
+mongoQueue.setConnectionByDetails(host, port, database, null, null);
+or
+mongoQueue.setConnectionByURL(URL);
 
-    //enqueue(input object, options, callback function)
-    mongoQueue.enqueue({a:'one',b:'one'},null,function(err,res){
-        if(err) return console.log('enqueue', err);
+// enqueue(input object, options, callback function)
+mongoQueue.enqueue({data: {a: 'input1', b: 'input2'}}, function (err, res) {
+    if (err) return console.log('enqueue', err);
 
-        console.log(res);
+    console.log(res);
+
+});
+
+//default listener event where you will get the dequeued item
+mongoQueue.subscription('default',function(err,msg){
+
+    // perform your processing steps. based on the error or success perform
+    // the below steps
+
+    // mark as success
+
+    mongoQueue.ackQueue('default', function(err,res){
+        if(err) return console.log('ack failure ', err);
+
+        console.log('ack success', res);
+
+    });
+
+    or
+
+    //mark as failure
+    mongoQueue.errQueue('default',"something went wrong",function(err,res){
+        if(err) return console.log('err queue failure ', err);
+
+        console.log('marked as err', res);
 
     });
 
-    //default listener event where you will get the dequeued item
-    mongoQueue.subscription('default',function(err,msg){
+});
 
-
-        // perform your processing steps. based on the error or success perform
-        // the below steps
-
-        // mark as success
-        mongoQueue.ackQueue('default', function(err,res){
-            if(err) return console.log('ack failure ', err);
-
-            console.log('ack success', res);
-
-        });
-
-        //or mark as failure
-        mongoQueue.errQueue('default',"something went wrong",function(err,res){
-            if(err) return console.log('err queue failure ', err);
-
-            console.log('marked as err', res);
-
-        });
-
-    });
 
 ````
 
 **Advanced Example:** Look at the example directory
 
-**API Available:**
+**Available Methods:**
 
  1. **setConnectionByURL**: If you already have a constructed URL.
 
