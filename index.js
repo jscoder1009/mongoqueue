@@ -766,4 +766,17 @@ mongoQueue.prototype.clearSuccessQueueItems = function (worker, cb) {
 
 }
 
+mongoQueue.prototype.clearAllQueueItems=function(worker, cb){
+    if (!this.isValidWorker(worker)) {
+        return cb("Invalid Worker Provided " + worker);
+    }
+
+    this.mongooseQueueModel.remove({worker: worker}, function (err, res) {
+        if (err) return cb(err);
+
+        return cb(null, res);
+
+    });
+}
+
 module.exports = new mongoQueue();
